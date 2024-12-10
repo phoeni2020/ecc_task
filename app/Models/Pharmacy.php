@@ -11,10 +11,12 @@ class Pharmacy extends Model
 
     protected $fillable = ['name', 'address'];
 
+    /**
+     * Define the m 2 m relation with products
+     */
     public function products()
     {
         return $this->belongsToMany(Product::class, 'product_pharmacy')
             ->withPivot('price');
     }
-
 }

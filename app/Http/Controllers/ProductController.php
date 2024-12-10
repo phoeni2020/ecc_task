@@ -50,16 +50,9 @@ class ProductController extends Controller
         return view('products.form', compact('product'));
     }
 
-    public function update(Request $request, $id)
+    public function update(ProductRequest $request, $id)
     {
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'required|string',
-            'price' => 'required|numeric|min:0',
-            'quantity' => 'required|integer|min:0',
-        ]);
-
-        $this->productService->updateProduct($id, $validated);
+        $this->productService->updateProduct($id, $request);
         return redirect()->route('products.index')->with('success', 'Product updated successfully.');
     }
 
