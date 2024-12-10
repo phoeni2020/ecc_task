@@ -1,65 +1,197 @@
 <?php
 
-namespace App\Http\Services;
+namespace App\Http\services;
 
 use App\Http\Requests\ProductRequest;
 use App\interfaces\ProductRepositoryInterface;
 use Illuminate\Support\Facades\Cache;
+use Exception;
+use Illuminate\Support\Facades\Log;
 
+/**
+ * Handle busines logic related to products
+ */
 class ProductService
 {
+    /**
+     * @var ProductRepositoryInterface
+     */
     protected $productRepository;
 
+    /**
+     * ProductService constructor.
+     *
+     * @param ProductRepositoryInterface $productRepository
+     */
     public function __construct(ProductRepositoryInterface $productRepository)
     {
         $this->productRepository = $productRepository;
     }
 
-    public function listAllProducts($page = 1, $perPage = 10)
+    /**
+     * List all products with pagination.
+     *
+     * @param int $page
+     * @param int $perPage
+     * @return mixed
+     */
+    public function listAllProducts(int $page = 1, int $perPage = 10)
     {
-        $cacheKey = "products_page_{$page}_perpage_{$perPage}";
+        // Generate a cache key based on the page and perPage
+        $cacheKey = $this->getCacheKeyForPagination($page, $perPage);
 
-        return Cache::remember($cacheKey, 3600, function () use ($perPage) {
+        // Check if the cache exists and return it, else query the repository and store the result in cache
+        $products = Cache::remember($cacheKey, 3600, function () use ($perPage) {
             return $this->productRepository->paginate($perPage);
         });
+
+        return $products;
     }
 
-
-    public function findProductById($id)
+    /**
+     * Find a product by ID.
+     *
+     * @param int $id
+     * @return mixed
+     */
+    public function findProductById(int $id)
     {
-        return Cache::remember("product_{$id}", 3600, function () use ($id) {
+        $cacheKey = $this->getCacheKeyForProduct($id);
+
+        return Cache::remember($cacheKey, 3600, function () use ($id) {
             return $this->productRepository->findById($id);
         });
     }
 
+    /**
+     * Create a new product.
+     *
+     * @param ProductRequest $data
+     * @return mixed
+     * @throws Exception
+     */
     public function createProduct(ProductRequest $data)
     {
-        $product = $this->productRepository->create($data);
-        Cache::forget('products_list'); // Invalidate the cache
-        return $product;
+        try {
+            $product = $this->productRepository->create($data);
+            $this->clearCache();
+            return $product;
+        } catch (Exception $e) {
+            throw new Exception("Error creating product: " . $e->getMessage());
+        }
     }
 
-    public function updateProduct($id, ProductRequest $data)
+    /**
+     * Update an existing product.
+     *
+     * @param int $id
+     * @param ProductRequest $data
+     * @return mixed
+     * @throws Exception
+     */
+    public function updateProduct(int $id, ProductRequest $data)
     {
-        $product = $this->productRepository->update($id, $data);
-        Cache::forget("product_{$id}");
-        Cache::forget('products_list');
-        return $product;
+        try {
+            $product = $this->productRepository->update($id, $data);
+            $this->clearCache($id);
+            return $product;
+        } catch (Exception $e) {
+            throw new Exception("Error updating product: " . $e->getMessage());
+        }
     }
 
-    public function deleteProduct($id)
+    /**
+     * Delete a product.
+     *
+     * @param int $id
+     * @return mixed
+     * @throws Exception
+     */
+    public function deleteProduct(int $id)
     {
-        $result = $this->productRepository->delete($id);
-        Cache::forget("product_{$id}");
-        Cache::forget('products_list');
-        return $result;
+        try {
+            $result = $this->productRepository->delete($id);
+            $this->clearCache($id);
+            return $result;
+        } catch (Exception $e) {
+            throw new Exception("Error deleting product: " . $e->getMessage());
+        }
     }
 
-    public function searchProducts($name)
+    /**
+     * Search products by name.
+     *
+     * @param string $name
+     * @return mixed
+     */
+    public function searchProducts(string $name)
     {
+        $cacheKey = $this->getCacheKeyForProductSearch($name);
 
-        return Cache::remember("product_search_{$name}", 3600, function () use ($name) {
+        return Cache::remember($cacheKey, 3600, function () use ($name) {
             return $this->productRepository->searchByName($name);
         });
     }
+
+    /**
+     * Helper to get cache key for pagination.
+     *
+     * @param int $page
+     * @param int $perPage
+     * @return string
+     */
+    private function getCacheKeyForPagination(int $page, int $perPage): string
+    {
+        return "products_page_{$page}_perpage_{$perPage}";
+    }
+
+    /**
+     * Helper to get cache key for a specific product.
+     *
+     * @param int $id
+     * @return string
+     */
+    private function getCacheKeyForProduct(int $id): string
+    {
+        return "product_{$id}";
+    }
+
+    /**
+     * Helper to get cache key for product search.
+     *
+     * @param string $name
+     * @return string
+     */
+    private function getCacheKeyForProductSearch(string $name): string
+    {
+        return "product_search_{$name}";
+    }
+
+    private function clearCache(int $productId = null)
+    {
+        // Clear specific product cache if productId is provided
+        if ($productId) {
+            Cache::forget("product_{$productId}");
+        }
+
+        // Clear all product list cache (pagination cache)
+        Cache::forget('products_list'); // TODO: consider using a more specific key for cache invalidation
+
+        // Clear all paginated cache keys for all pages
+        $this->clearPaginationCache();
+    }
+
+    private function clearPaginationCache()
+    {
+        //TODO: store all cache keys for pagination invalidation
+        // This example assumes that i may know all pagination keys, but i might want a more flexible approach
+
+        // Example of clearing cache for pages 1-10
+        for ($page = 1; $page <= 10; $page++) {
+            Cache::forget("products_page_{$page}_perpage_10");
+        }
+    }
+
+
+
 }
